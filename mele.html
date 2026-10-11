@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Raccogli le mele</title>
+<style>
+  :root {
+    --sky: #cfe8f3;
+    --hill: #7fb069;
+    --ground: #4f7d3a;
+    --ink: #24331f;
+    --panel: #fffaf0;
+    --accent: #c8402f;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --sky: #1d3340; --hill: #3f6b3a; --ground: #2b4a29;
+      --ink: #eaf2e3; --panel: #26331f; --accent: #ef6b57;
+    }
+  }
+  :root[data-theme="dark"] {
+    --sky: #1d3340; --hill: #3f6b3a; --ground: #2b4a29;
+    --ink: #eaf2e3; --panel: #26331f; --accent: #ef6b57;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--sky);
+    color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  #app { position: relative; height: 100%; display: flex; flex-direction: column; }
+  #hud {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 18px; font-size: 20px; font-weight: 700;
+  }
+  #lives { letter-spacing: 3px; }
+  #stage { position: relative; flex: 1; min-height: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  #card {
+    background: var(--panel); border-radius: 18px; padding: 24px 26px; max-width: 320px;
+    text-align: center; box-shadow: 0 6px 0 var(--ground);
+  }
+  #card h1 { margin: 0 0 8px; font-size: 28px; }
+  #card p { margin: 0 0 16px; line-height: 1.45; }
+  button {
+    font: inherit; font-weight: 700; font-size: 18px; color: #fff; background: var(--accent);
+    border: 0; border-radius: 12px; padding: 12px 26px; cursor: pointer;
+  }
+  button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <span>Mele: <span id="score">0</span></span>
+    <span id="lives" aria-label="Vite">❤️❤️❤️</span>
+    <span>Record: <span id="best">0</span></span>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="overlay">
+      <div id="card">
+        <h1 id="title">Raccogli le mele</h1>
+        <p id="msg">Trascina il cesto per prendere le mele 🍎. Evita i bruchi 🐛 e non lasciar cadere le mele a terra!</p>
+        <button id="start">Gioca</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const $ = id => document.getElementById(id);
+  const scoreEl = $('score'), livesEl = $('lives'), bestEl = $('best');
+  const overlay = $('overlay'), titleEl = $('title'), msgEl = $('msg'), startBtn = $('start');
+
+  let W = 0, H = 0, dpr = 1;
+  let best = 0;
+  try { best = parseInt(localStorage.getItem('mele-best') || '0', 10) || 0; } catch (e) {}
+  bestEl.textContent = best;
+
+  const basket = { x: 0, w: 70, h: 44 };
+  let items = [], score = 0, lives = 3, running = false, last = 0, spawnT = 0, elapsed = 0;
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    const r = canvas.getBoundingClientRect();
+    W = r.width; H = r.height;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    basket.w = Math.max(64, Math.min(90, W * 0.2));
+    basket.h = basket.w * 0.62;
+    basket.x = Math.min(Math.max(basket.x, 0), W - basket.w) || (W - basket.w) / 2;
+  }
+  window.addEventListener('resize', resize);
+
+  function moveTo(clientX) {
+    const r = canvas.getBoundingClientRect();
+    basket.x = Math.min(Math.max(clientX - r.left - basket.w / 2, 0), W - basket.w);
+  }
+  window.addEventListener('pointermove', e => moveTo(e.clientX));
+  window.addEventListener('pointerdown', e => moveTo(e.clientX));
+  window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft') basket.x = Math.max(0, basket.x - 40);
+    if (e.key === 'ArrowRight') basket.x = Math.min(W - basket.w, basket.x + 40);
+  });
+
+  function setLives() { livesEl.textContent = '❤️'.repeat(Math.max(lives, 0)) || '💔'; }
+
+  function spawn() {
+    const size = 34;
+    items.push({
+      x: Math.random() * (W - size) + size / 2,
+      y: -size,
+      size,
+      vy: 120 + Math.random() * 60 + elapsed * 6,
+      bad: Math.random() < Math.min(0.15 + elapsed * 0.004, 0.35)
+    });
+  }
+
+  function loseLife() {
+    lives--; setLives();
+    if (lives <= 0) endGame();
+  }
+
+  function endGame() {
+    running = false;
+    if (score > best) {
+      best = score; bestEl.textContent = best;
+      try { localStorage.setItem('mele-best', String(best)); } catch (e) {}
+    }
+    titleEl.textContent = 'Partita finita';
+    msgEl.textContent = `Hai raccolto ${score} mele. Record: ${best}.`;
+    startBtn.textContent = 'Gioca ancora';
+    overlay.classList.remove('hidden');
+  }
+
+  function startGame() {
+    items = []; score = 0; lives = 3; elapsed = 0; spawnT = 0;
+    scoreEl.textContent = 0; setLives();
+    overlay.classList.add('hidden');
+    running = true; last = performance.now();
+    requestAnimationFrame(loop);
+  }
+  startBtn.addEventListener('click', startGame);
+
+  function update(dt) {
+    elapsed += dt;
+    spawnT -= dt;
+    if (spawnT <= 0) { spawn(); spawnT = Math.max(0.35, 1 - elapsed * 0.01); }
+    const by = H - basket.h - 16;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      it.y += it.vy * dt;
+      const caught = it.y + it.size / 2 >= by && it.y <= by + basket.h * 0.5 &&
+                     it.x >= basket.x - 6 && it.x <= basket.x + basket.w + 6;
+      if (caught) {
+        items.splice(i, 1);
+        if (it.bad) loseLife(); else { score++; scoreEl.textContent = score; }
+      } else if (it.y > H + it.size) {
+        items.splice(i, 1);
+        if (!it.bad) loseLife();
+      }
+      if (!running) return;
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    // hills
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--hill');
+    ctx.beginPath();
+    ctx.ellipse(W * 0.25, H + 20, W * 0.6, H * 0.18, 0, 0, Math.PI * 2);
+    ctx.ellipse(W * 0.85, H + 30, W * 0.5, H * 0.14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ground');
+    ctx.fillRect(0, H - 10, W, 10);
+    // items
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '34px serif';
+    for (const it of items) ctx.fillText(it.bad ? '🐛' : '🍎', it.x, it.y);
+    // basket
+    ctx.font = `${basket.w * 0.85}px serif`;
+    ctx.fillText('🧺', basket.x + basket.w / 2, H - basket.h / 2 - 12);
+  }
+
+  function loop(t) {
+    if (!running) return;
+    const dt = Math.min((t - last) / 1000, 0.05);
+    last = t;
+    update(dt);
+    draw();
+    if (running) requestAnimationFrame(loop);
+  }
+
+  resize();
+  basket.x = (W - basket.w) / 2;
+  draw();
+})();
+</script>
+</body>
+</html>
