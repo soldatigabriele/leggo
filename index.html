@@ -1,7 +1,5 @@
 <!DOCTYPE html>
 <html lang="it">
-<!-- Leggo! - gioco per imparare a leggere. Test di upload via API. -->
-
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -68,6 +66,16 @@
   .mode .arrow { font-size: 34px; opacity: .85; letter-spacing: 0; }
   #modePic { background: var(--b3); }
   #modeWord { background: var(--b1); }
+
+  .settings { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 4px; }
+  .slabel { font-weight: 700; font-size: 18px; opacity: .75; }
+  .seg { display: flex; gap: 8px; }
+  .lt {
+    appearance: none; border: 0; background: var(--card); color: var(--ink);
+    font-weight: 700; font-size: 22px; min-width: 56px; height: 46px; padding: 0 14px;
+    border-radius: 23px; box-shadow: 0 3px 0 rgba(27, 42, 74, .15);
+  }
+  .lt.on { background: var(--ink); color: var(--card); }
 
   /* ---------- game ---------- */
   .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; }
@@ -162,6 +170,14 @@
     <button class="mode" id="modeWord" aria-label="Leggi la parola, scegli il disegno">
       <span>MELA</span><span class="arrow">→</span><span class="e">🍎</span>
     </button>
+    <div class="settings">
+      <span class="slabel">Lettere</span>
+      <div class="seg" role="group" aria-label="Numero di lettere">
+        <button class="lt" data-n="3" type="button">3</button>
+        <button class="lt" data-n="4" type="button">4</button>
+        <button class="lt" data-n="all" type="button">3-4</button>
+      </div>
+    </div>
   </div>
 
   <div class="screen" id="game">
@@ -194,9 +210,14 @@
     ['PANE', '🍞'], ['UOVO', '🥚'], ['NASO', '👃'], ['MANO', '✋'], ['RANA', '🐸'],
     ['MARE', '🌊'], ['AUTO', '🚗'], ['NAVE', '🚢'], ['LUPO', '🐺'], ['DITO', '👆'],
     ['UVA', '🍇'], ['ROSA', '🌹'], ['NEVE', '❄️'], ['OSSO', '🦴'], ['DADO', '🎲'],
-    ['PERA', '🍐'], ['MOTO', '🏍️'], ['OCA', '🦆'], ['SCI', '⛷️'],
+    ['PERA', '🍐'], ['MOTO', '🏍️'], ['OCA', '🪿'], ['SCI', '⛷️'],
     ['APE', '🐝'], ['SALE', '🧂'], ['TOPO', '🐭'], ['TORO', '🐂'],
-    ['FOCA', '🦭'], ['FATA', '🧚'], ['VASO', '🏺'], ['VELA', '⛵'], ['MAGO', '🧙']
+    ['FOCA', '🦭'], ['FATA', '🧚'], ['VASO', '🏺'], ['VELA', '⛵'], ['MAGO', '🧙'],
+    ['ORSO', '🐻'], ['RISO', '🍚'], ['LAMA', '🦙'], ['KIWI', '🥝'], ['CIAO', '👋'],
+    ['LUCE', '💡'], ['NUBE', '☁️'], ['TAXI', '🚕'], ['ERBA', '🌿'], ['MURO', '🧱'],
+    ['DONO', '🎁'], ['ELMO', '🪖'], ['ARCO', '🏹'], ['BACO', '🐛'], ['PINO', '🌲'],
+    ['FILM', '🎬'], ['VITE', '🔩'],
+    ['BUS', '🚌'], ['UFO', '🛸'], ['ORA', '🕒'], ['TIR', '🚛'], ['SAX', '🎷'], ['AGO', '🪡']
   ];
   var ROUND = 10;
   var COLS = ['var(--b1)', 'var(--b2)', 'var(--b3)', '#f08a00'];
@@ -207,6 +228,33 @@
 
   var mode = 'pic'; // 'pic' = disegno -> parola, 'word' = parola -> disegno
   var queue, idx, stars, mistakes, locked, timer;
+
+  // Impostazione: numero di lettere delle parole ('3', '4' o 'all'), salvata sul telefono
+  var letters = 'all';
+  try {
+    var saved = localStorage.getItem('leggo-lettere');
+    if (saved === '3' || saved === '4' || saved === 'all') letters = saved;
+  } catch (e) {}
+
+  function pool() {
+    return WORDS.filter(function (w) { return letters === 'all' || w[0].length === parseInt(letters, 10); });
+  }
+
+  function paintLetters() {
+    Array.prototype.forEach.call(document.querySelectorAll('.lt'), function (b) {
+      var on = b.dataset.n === letters;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.lt'), function (b) {
+    b.addEventListener('click', function () {
+      letters = b.dataset.n;
+      try { localStorage.setItem('leggo-lettere', letters); } catch (e) {}
+      paintLetters();
+    });
+  });
+  paintLetters();
 
   function go(name) {
     for (var k in screens) screens[k].classList.toggle('on', k === name);
@@ -223,7 +271,7 @@
   function start(m) {
     if (m) mode = m;
     clearTimeout(timer);
-    queue = shuffle(WORDS).slice(0, ROUND).map(function (w) { return { word: w[0], pic: w[1], star: false }; });
+    queue = shuffle(pool()).slice(0, ROUND).map(function (w) { return { word: w[0], pic: w[1], star: false }; });
     idx = 0; stars = 0;
     dotsEl.innerHTML = '';
     for (var i = 0; i < ROUND; i++) {
@@ -248,8 +296,8 @@
   // Distractors start with the SAME letter as the target whenever possible
   function pickChoices(target) {
     var letter = target.word[0];
-    var same = shuffle(WORDS.filter(function (w) { return w[0] !== target.word && w[0][0] === letter; }));
-    var rest = shuffle(WORDS.filter(function (w) { return w[0][0] !== letter; }));
+    var same = shuffle(pool().filter(function (w) { return w[0] !== target.word && w[0][0] === letter; }));
+    var rest = shuffle(pool().filter(function (w) { return w[0][0] !== letter; }));
     var chosen = same.slice(0, 2);
     while (chosen.length < 2) chosen.push(rest.shift());
     return shuffle([[target.word, target.pic]].concat(chosen));
