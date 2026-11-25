@@ -187,6 +187,9 @@
   .lk:nth-child(3n+2) { background: var(--b2); }
   .lk:nth-child(3n+3) { background: var(--b3); }
   .lk:active { transform: translateY(3px); }
+  .tiles.five { gap: 7px; }
+  .tiles.five .lk { width: 58px; }
+  .slots.five .slot { width: 54px; }
   .lk.used { opacity: .12; pointer-events: none; }
   .lk.wrong { animation: wob .4s; }
   .lk.hint { animation: glow .8s ease-in-out infinite; }
@@ -212,6 +215,7 @@
     content: ""; position: absolute; left: 50%; top: 99%; width: 2px; height: 46px;
     background: rgba(27, 42, 74, .45); transform: translateX(-50%);
   }
+  .bl-in.long { font-size: min(5.8vw, 24px); letter-spacing: .04em; text-indent: .04em; }
   .balloon.c0 .bl-in { background: var(--b1); }
   .balloon.c1 .bl-in { background: var(--b2); }
   .balloon.c2 .bl-in { background: var(--b3); }
@@ -235,6 +239,7 @@
   }
   .card.up { background: var(--card); color: var(--ink); font-family: var(--emoji); }
   .card.up.isword { font-family: var(--font); font-size: min(7.2vw, 28px); letter-spacing: .08em; text-indent: .08em; }
+  .card.up.isword.long { font-size: min(5.8vw, 23px); letter-spacing: .03em; text-indent: .03em; }
   .card.ok { background: var(--okbg); color: var(--ink); box-shadow: none; transform: translateY(3px); }
 
   /* album */
@@ -323,6 +328,7 @@
           <button class="lt" data-n="3" type="button">3</button>
           <button class="lt" data-n="4" type="button">4</button>
           <button class="lt" data-n="all" type="button">3-4</button>
+          <button class="lt" data-n="5" type="button">5</button>
         </div>
       </div>
     </div>
@@ -382,7 +388,13 @@
     ['LUCE', '💡'], ['NUBE', '☁️'], ['TAXI', '🚕'], ['ERBA', '🌿'], ['MURO', '🧱'],
     ['DONO', '🎁'], ['ELMO', '🪖'], ['ARCO', '🏹'], ['BACO', '🐛'], ['PINO', '🌲'],
     ['FILM', '🎬'], ['VITE', '🔩'],
-    ['BUS', '🚌'], ['UFO', '🛸'], ['ORA', '🕒'], ['TIR', '🚛'], ['SAX', '🎷'], ['AGO', '🪡']
+    ['BUS', '🚌'], ['UFO', '🛸'], ['ORA', '🕒'], ['TIR', '🚛'], ['SAX', '🎷'], ['AGO', '🪡'],
+    ['GATTO', '🐱'], ['TRENO', '🚂'], ['PESCE', '🐟'], ['FIORE', '🌸'], ['LIBRO', '📖'],
+    ['PALLA', '⚽'], ['TORTA', '🎂'], ['MUCCA', '🐮'], ['PIZZA', '🍕'], ['FUNGO', '🍄'],
+    ['LEONE', '🦁'], ['TIGRE', '🐯'], ['ZEBRA', '🦓'], ['PANDA', '🐼'], ['KOALA', '🐨'],
+    ['CUORE', '❤️'], ['FUOCO', '🔥'], ['BARCA', '🛶'], ['POLPO', '🐙'], ['CAPRA', '🐐'],
+    ['LATTE', '🥛'], ['ROBOT', '🤖'], ['TENDA', '⛺'], ['LETTO', '🛏️'], ['DENTE', '🦷'],
+    ['BOCCA', '👄'], ['ISOLA', '🏝️'], ['PORTA', '🚪'], ['SEDIA', '🪑'], ['MONDO', '🌍']
   ];
   var ROUND = 10, PAIRS = 6;
   var COLS = ['var(--b1)', 'var(--b2)', 'var(--b3)', '#f08a00'];
@@ -419,11 +431,11 @@
   var letters = 'all';
   try {
     var saved = localStorage.getItem('leggo-lettere');
-    if (saved === '3' || saved === '4' || saved === 'all') letters = saved;
+    if (saved === '3' || saved === '4' || saved === '5' || saved === 'all') letters = saved;
   } catch (e) {}
 
   function pool() {
-    return WORDS.filter(function (w) { return letters === 'all' || w[0].length === parseInt(letters, 10); });
+    return WORDS.filter(function (w) { return letters === 'all' ? w[0].length <= 4 : w[0].length === parseInt(letters, 10); });
   }
   function paintLetters() {
     Array.prototype.forEach.call(document.querySelectorAll('.lt'), function (b) {
@@ -639,6 +651,8 @@
   function showBuild(w) {
     var L = w.word.split('');
     bi = 0;
+    tilesEl.classList.toggle('five', L.length > 4);
+    slotsEl.classList.toggle('five', L.length > 4);
     L.forEach(function () { var s = document.createElement('div'); s.className = 'slot'; slotsEl.appendChild(s); });
     var order = shuffle(L), tries = 0;
     while (tries++ < 10 && order.join('') === L.join('') && L.length > 1) order = shuffle(L);
@@ -693,7 +707,7 @@
       b.style.setProperty('--dur', dur + 's');
       b.style.setProperty('--delay', (i * 0.7) + 's');
       var inner = document.createElement('span');
-      inner.className = 'bl-in'; inner.textContent = o[0];
+      inner.className = 'bl-in' + (o[0].length > 4 ? ' long' : ''); inner.textContent = o[0];
       b.appendChild(inner);
       b.addEventListener('click', function () { popBalloon(b); });
       b.addEventListener('animationend', function (e) {
@@ -758,11 +772,12 @@
     c.up = true;
     c.el.classList.add('up');
     c.el.classList.toggle('isword', c.type === 'word');
+    c.el.classList.toggle('long', c.type === 'word' && c.word.length > 4);
     c.el.textContent = c.type === 'pic' ? c.pic : c.word;
   }
   function faceDown(c) {
     c.up = false;
-    c.el.classList.remove('up', 'isword');
+    c.el.classList.remove('up', 'isword', 'long');
     c.el.textContent = '?';
   }
   function flip(b, c) {
